@@ -1,0 +1,31 @@
+[package]
+name = "embassy-stm32f1-jdy31-stable-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embassy-executor = { version = "0.7.0", features = ["arch-cortex-m", "executor-thread", "defmt"] }
+embassy-stm32 = { version = "0.2.0", features = [
+    "defmt",
+    "stm32f103c8", # 确保这是你的芯片型号对应的特性
+    "unstable-pac",
+    "memory-x",
+    "time-driver-any", # 或指定特定定时器
+    "exti", # 如果需要外部中断
+] }
+embassy-time = { version = "0.4.0", features = ["defmt", "defmt-timestamp-uptime"] } # [1] 使用 0.4.0，但 embassy-stm32 0.1.0 可能依赖旧版
+embassy-sync = { version = "0.6.2", features = ["defmt"] } # [1]
+
+# 用于日志和 panic 处理
+defmt = "1.0.1"
+defmt-rtt = "1.0.0"
+panic-probe = { version = "1.0.0", features = ["print-defmt"] }
+
+cortex-m = { version = "0.7.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7.3"
+embedded-io-async = "0.6.1"
+
+[profile.release]
+debug = true # 在发布版本中保留调试信息，方便 probe-rs
+lto = true
+opt-level = "s" # 或 "z"，优化代码大小
