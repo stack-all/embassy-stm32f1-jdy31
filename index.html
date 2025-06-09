@@ -358,8 +358,14 @@
                     
                     const avgTimePerAttempt = elapsed / progressForCalculation;
                     const remaining = (totalProgress - currentProgress) * avgTimePerAttempt;
-                    const minutes = Math.floor(remaining / 60000);
-                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    
+                    // 防止负数时间
+                    if (remaining <= 0) {
+                        return '即将完成';
+                    }
+                    
+                    const minutes = Math.max(0, Math.floor(remaining / 60000));
+                    const seconds = Math.max(0, Math.floor((remaining % 60000) / 1000));
                     return `${minutes}分${seconds}秒`;
                 });
 
@@ -694,7 +700,17 @@
                                 return;
                             }
 
-                            bruteforceCheckpoint.value = checkpoint;
+                            // 确保 current 不超过 total 和 combinations 长度
+                            const validCurrent = Math.min(
+                                checkpoint.current || 0, 
+                                checkpoint.total || 0, 
+                                checkpoint.combinations.length
+                            );
+
+                            bruteforceCheckpoint.value = {
+                                ...checkpoint,
+                                current: validCurrent
+                            };
                             savedCombinations.value = checkpoint.combinations;
                             canResume.value = true;
                             
@@ -702,9 +718,9 @@
                             bruteforcePattern.value = checkpoint.pattern;
                             bruteforceDelay.value = checkpoint.delay || 1000;
                             maxBruteforceAttempts.value = checkpoint.maxAttempts || 256;
-                            bruteforceProgress.value = { current: checkpoint.current, total: checkpoint.total };
+                            bruteforceProgress.value = { current: validCurrent, total: checkpoint.total };
                             
-                            showLog(`检查点已加载：${checkpoint.current}/${checkpoint.total}`, false, 3000);
+                            showLog(`检查点已加载：${validCurrent}/${checkpoint.total}`, false, 3000);
                         } catch (error) {
                             showLog('检查点文件解析失败', true, 3000);
                             console.error('Checkpoint parse error:', error);
@@ -737,6 +753,12 @@
                         return;
                     }
 
+                    // 检查进度是否已经完成
+                    if (checkpoint.current >= checkpoint.total || checkpoint.current >= combinations.length) {
+                        showLog('爆破已完成，无需继续', false);
+                        return;
+                    }
+
                     // 从断点位置开始的剩余组合
                     const remainingCombinations = combinations.slice(checkpoint.current);
                     
@@ -746,23 +768,33 @@
                     }
 
                     isBruteforcing.value = true;
-                    bruteforceProgress.value = { current: checkpoint.current, total: checkpoint.total };
+                    
+                    // 重要：保持检查点的原始进度，不要重新设置
+                    bruteforceProgress.value = { 
+                        current: checkpoint.current, 
+                        total: checkpoint.total 
+                    };
                     
                     // 记录续传开始的时间和起始进度
                     bruteforceStartTime.value = Date.now();
-                    resumeStartProgress.value = checkpoint.current; // 记录续传开始时的进度
+                    resumeStartProgress.value = checkpoint.current;
                     
                     showLog(`从第${checkpoint.current + 1}个组合恢复爆破，剩余${remainingCombinations.length}个组合`, false);
 
-                    const sendNextCommand = async (index) => {
-                        if (!isBruteforcing.value || index >= remainingCombinations.length) {
+                    const sendNextCommand = async (remainingIndex) => {
+                        if (!isBruteforcing.value || remainingIndex >= remainingCombinations.length) {
                             stopBruteforce();
                             return;
                         }
 
-                        const command = remainingCombinations[index];
+                        const command = remainingCombinations[remainingIndex];
                         currentBruteforceCommand.value = command;
-                        bruteforceProgress.value.current = checkpoint.current + index + 1;
+                        
+                        // 计算真实的总进度：起始进度 + 剩余数组中的索引 + 1
+                        const realProgress = checkpoint.current + remainingIndex + 1;
+                        
+                        // 确保不超过总数
+                        bruteforceProgress.value.current = Math.min(realProgress, checkpoint.total);
 
                         // 实时更新检查点
                         bruteforceCheckpoint.value.current = bruteforceProgress.value.current;
@@ -772,7 +804,7 @@
                             
                             // Schedule next command
                             bruteforceTimeoutId.value = setTimeout(() => {
-                                sendNextCommand(index + 1);
+                                sendNextCommand(remainingIndex + 1);
                             }, bruteforceDelay.value);
                             
                         } catch (error) {
@@ -781,7 +813,7 @@
                         }
                     };
 
-                    // 开始续传
+                    // 开始续传，从剩余数组的索引 0 开始
                     sendNextCommand(0);
                 };
 
