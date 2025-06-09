@@ -152,6 +152,66 @@
                 </div>
             </div>
 
+            <!-- HEX Bruteforce Card -->
+            <div class="bg-gray-700/50 rounded-lg p-4 mb-6">
+                <h2 class="text-lg font-semibold mb-3 flex items-center">
+                    <i data-lucide="search" class="lucide-icon mr-2 text-cyan-400"></i>
+                    HEX 爆破工具
+                </h2>
+                
+                <!-- Pattern Input -->
+                <div class="mb-3">
+                    <label class="block text-sm font-medium mb-1">HEX 模式 (用 X 表示未知位):</label>
+                    <input type="text" v-model="bruteforcePattern" placeholder="例如: AA 01 9A XX 02 0X X0 1X AX 55" 
+                           class="w-full bg-gray-800 border border-gray-600 focus:border-cyan-500 focus:ring-cyan-500 text-white rounded-lg px-3 py-2 transition-colors">
+                    <p class="text-xs text-gray-400 mt-1">XX = 完整字节 (00-FF)，0X = 低半字节 (00-0F)，X0 = 高半字节 (00-F0)，1X = 固定高位1 (10-1F)，AX = 固定高位A (A0-AF)，等等</p>
+                </div>
+
+                <!-- Settings Row -->
+                <div class="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                        <label class="block text-sm font-medium mb-1">发送间隔 (毫秒):</label>
+                        <input type="number" v-model="bruteforceDelay" min="100" max="5000" step="100"
+                               class="w-full bg-gray-800 border border-gray-600 focus:border-cyan-500 focus:ring-cyan-500 text-white rounded-lg px-3 py-2 transition-colors">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-1">最大尝试次数:</label>
+                        <input type="number" v-model="maxBruteforceAttempts" min="1" max="10000" step="1"
+                               class="w-full bg-gray-800 border border-gray-600 focus:border-cyan-500 focus:ring-cyan-500 text-white rounded-lg px-3 py-2 transition-colors">
+                    </div>
+                </div>
+
+                <!-- Control Buttons -->
+                <div class="flex space-x-2 mb-3">
+                    <button @click="startBruteforce" :disabled="!isConnected || isBruteforcing || !isValidBruteforcePattern" 
+                            class="flex-1 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center">
+                        <i data-lucide="play" class="lucide-icon mr-2"></i>
+                        开始爆破
+                    </button>
+                    <button @click="stopBruteforce" :disabled="!isBruteforcing"
+                            class="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center">
+                        <i data-lucide="stop-circle" class="lucide-icon mr-2"></i>
+                        停止爆破
+                    </button>
+                </div>
+
+                <!-- Progress Info -->
+                <div v-if="isBruteforcing || bruteforceProgress.total > 0" class="bg-gray-800 rounded-lg p-3">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm font-medium">爆破进度:</span>
+                        <span class="text-sm text-cyan-400">{{ bruteforceProgress.current }} / {{ bruteforceProgress.total }}</span>
+                    </div>
+                    <div class="w-full bg-gray-600 rounded-full h-2 mb-2">
+                        <div class="bg-orange-500 h-2 rounded-full transition-all duration-300" 
+                             :style="{ width: bruteforceProgressPercent + '%' }"></div>
+                    </div>
+                    <div class="text-xs text-gray-400">
+                        <div>当前命令: {{ currentBruteforceCommand }}</div>
+                        <div v-if="isBruteforcing">预计剩余时间: {{ estimatedTimeRemaining }}</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Manual Command Card -->
             <div class="bg-gray-700/50 rounded-lg p-4">
                  <h2 class="text-lg font-semibold mb-3 flex items-center">
@@ -193,6 +253,16 @@
                 const showInstallPrompt = ref(false);
                 const deferredPrompt = ref(null);
 
+                // Bruteforce state
+                const bruteforcePattern = ref('AA 01 9A XX 02 XX XX 55');
+                const bruteforceDelay = ref(1000);
+                const maxBruteforceAttempts = ref(256);
+                const isBruteforcing = ref(false);
+                const bruteforceProgress = ref({ current: 0, total: 0 });
+                const currentBruteforceCommand = ref('');
+                const bruteforceStartTime = ref(null);
+                const bruteforceTimeoutId = ref(null);
+
                 const presetModes = ref([
                     { name: '强力洗', command: 'AA 01 9A 01 02 A9 16 55', icon: 'zap' },
                     { name: '快速洗', command: 'AA 01 9A 03 02 0A 6F 55', icon: 'fast-forward' },
@@ -207,6 +277,29 @@
                     : 'bg-red-500/20 text-red-400'
                 );
                 const logClass = computed(() => isErrorLog.value ? 'bg-red-500/20 text-red-300' : 'bg-blue-500/20 text-blue-300');
+
+                // Bruteforce computed properties
+                const isValidBruteforcePattern = computed(() => {
+                    const pattern = bruteforcePattern.value.trim();
+                    return pattern && pattern.includes('X') && /^[0-9a-fA-F\sX]+$/.test(pattern);
+                });
+
+                const bruteforceProgressPercent = computed(() => {
+                    if (bruteforceProgress.value.total === 0) return 0;
+                    return Math.round((bruteforceProgress.value.current / bruteforceProgress.value.total) * 100);
+                });
+
+                const estimatedTimeRemaining = computed(() => {
+                    if (!isBruteforcing.value || !bruteforceStartTime.value || bruteforceProgress.value.current === 0) {
+                        return '计算中...';
+                    }
+                    const elapsed = Date.now() - bruteforceStartTime.value;
+                    const avgTimePerAttempt = elapsed / bruteforceProgress.value.current;
+                    const remaining = (bruteforceProgress.value.total - bruteforceProgress.value.current) * avgTimePerAttempt;
+                    const minutes = Math.floor(remaining / 60000);
+                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    return `${minutes}分${seconds}秒`;
+                });
 
                 // --- Initialize Lucide Icons ---
                 const initializeLucideIcons = () => {
@@ -392,6 +485,141 @@
                     manualCommand.value = '';
                 }
 
+                // --- Bruteforce Functions ---
+                const generateBruteforceCombinations = (pattern) => {
+                    const parts = pattern.trim().split(/\s+/);
+                    const unknownPositions = [];
+                    const combinations = [];
+
+                    // Find positions and types of unknown patterns
+                    parts.forEach((part, index) => {
+                        const upperPart = part.toUpperCase();
+                        if (upperPart === 'XX') {
+                            unknownPositions.push({ index, type: 'full', range: 256 }); // 00-FF
+                        } else if (upperPart === '0X') {
+                            unknownPositions.push({ index, type: 'low', range: 16 }); // 00-0F
+                        } else if (upperPart === 'X0') {
+                            unknownPositions.push({ index, type: 'high', range: 16 }); // 00-F0 (步长16)
+                        } else if (/^[0-9A-F]X$/.test(upperPart)) {
+                            // 匹配 1X, 2X, 3X, AX 等模式
+                            const highNibble = upperPart[0];
+                            unknownPositions.push({ index, type: 'fixed_high', range: 16, prefix: highNibble }); // X0-XF
+                        } else if (/^X[0-9A-F]$/.test(upperPart)) {
+                            // 匹配 X1, X2, X3, XA 等模式
+                            const lowNibble = upperPart[1];
+                            unknownPositions.push({ index, type: 'fixed_low', range: 16, suffix: lowNibble }); // 0X-FX
+                        }
+                    });
+
+                    if (unknownPositions.length === 0) {
+                        return [pattern];
+                    }
+
+                    // Calculate total combinations
+                    const totalCombinations = unknownPositions.reduce((total, pos) => total * pos.range, 1);
+                    const maxCombinations = Math.min(maxBruteforceAttempts.value, totalCombinations);
+                    
+                    for (let i = 0; i < maxCombinations; i++) {
+                        const combination = [...parts];
+                        let temp = i;
+                        
+                        // Generate values for each unknown position
+                        for (let j = unknownPositions.length - 1; j >= 0; j--) {
+                            const pos = unknownPositions[j];
+                            const value = temp % pos.range;
+                            temp = Math.floor(temp / pos.range);
+                            
+                            let hexValue;
+                            if (pos.type === 'full') {
+                                // XX: 00-FF
+                                hexValue = value.toString(16).toUpperCase().padStart(2, '0');
+                            } else if (pos.type === 'low') {
+                                // 0X: 00-0F
+                                hexValue = '0' + value.toString(16).toUpperCase();
+                            } else if (pos.type === 'high') {
+                                // X0: 00-F0 (步长16)
+                                hexValue = (value * 16).toString(16).toUpperCase().padStart(2, '0');
+                            } else if (pos.type === 'fixed_high') {
+                                // 1X, 2X, AX: 10-1F, 20-2F, A0-AF
+                                hexValue = pos.prefix + value.toString(16).toUpperCase();
+                            } else if (pos.type === 'fixed_low') {
+                                // X1, X2, XA: 01-F1, 02-F2, 0A-FA
+                                hexValue = value.toString(16).toUpperCase() + pos.suffix;
+                            }
+                            
+                            combination[pos.index] = hexValue;
+                        }
+                        
+                        combinations.push(combination.join(' '));
+                        
+                        if (temp > 0) break; // All combinations generated
+                    }
+
+                    return combinations;
+                };
+
+                const startBruteforce = async () => {
+                    if (!isConnected.value || isBruteforcing.value || !isValidBruteforcePattern.value) {
+                        return;
+                    }
+
+                    const combinations = generateBruteforceCombinations(bruteforcePattern.value);
+                    
+                    if (combinations.length === 0) {
+                        showLog('无法生成有效的爆破组合', true);
+                        return;
+                    }
+
+                    isBruteforcing.value = true;
+                    bruteforceProgress.value = { current: 0, total: combinations.length };
+                    bruteforceStartTime.value = Date.now();
+                    
+                    showLog(`开始HEX爆破，共${combinations.length}个组合`, false);
+
+                    const sendNextCommand = async (index) => {
+                        if (!isBruteforcing.value || index >= combinations.length) {
+                            stopBruteforce();
+                            return;
+                        }
+
+                        const command = combinations[index];
+                        currentBruteforceCommand.value = command;
+                        bruteforceProgress.value.current = index + 1;
+
+                        try {
+                            await sendCommand(command);
+                            
+                            // Schedule next command
+                            bruteforceTimeoutId.value = setTimeout(() => {
+                                sendNextCommand(index + 1);
+                            }, bruteforceDelay.value);
+                            
+                        } catch (error) {
+                            showLog(`爆破发送失败: ${error.message}`, true);
+                            stopBruteforce();
+                        }
+                    };
+
+                    // Start the bruteforce sequence
+                    sendNextCommand(0);
+                };
+
+                const stopBruteforce = () => {
+                    if (bruteforceTimeoutId.value) {
+                        clearTimeout(bruteforceTimeoutId.value);
+                        bruteforceTimeoutId.value = null;
+                    }
+                    
+                    const wasRunning = isBruteforcing.value;
+                    isBruteforcing.value = false;
+                    
+                    if (wasRunning) {
+                        const elapsed = bruteforceStartTime.value ? 
+                            Math.round((Date.now() - bruteforceStartTime.value) / 1000) : 0;
+                        showLog(`HEX爆破已停止。已尝试 ${bruteforceProgress.value.current} 个组合，耗时 ${elapsed} 秒`, false);
+                    }
+                };
+
                 return {
                     isConnected,
                     logMessage,
@@ -404,10 +632,21 @@
                     connectionStatusText,
                     connectionPillClass,
                     logClass,
+                    bruteforcePattern,
+                    bruteforceDelay,
+                    maxBruteforceAttempts,
+                    isBruteforcing,
+                    bruteforceProgress,
+                    currentBruteforceCommand,
+                    isValidBruteforcePattern,
+                    bruteforceProgressPercent,
+                    estimatedTimeRemaining,
                     scanAndConnect,
                     disconnect,
                     sendCommand,
                     sendManualCommand,
+                    startBruteforce,
+                    stopBruteforce,
                     installPWA,
                     dismissInstallPrompt
                 };
