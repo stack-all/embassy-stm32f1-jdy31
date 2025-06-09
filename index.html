@@ -305,6 +305,7 @@
                 const bruteforceCheckpoint = ref(null);
                 const savedCombinations = ref([]);
                 const canResume = ref(false);
+                const resumeStartProgress = ref(0); // 续传开始时的进度
 
                 const presetModes = ref([
                     { name: '强力洗', command: 'AA 01 9A 01 02 A9 16 55', icon: 'zap' },
@@ -333,12 +334,30 @@
                 });
 
                 const estimatedTimeRemaining = computed(() => {
-                    if (!isBruteforcing.value || !bruteforceStartTime.value || bruteforceProgress.value.current === 0) {
+                    if (!isBruteforcing.value || !bruteforceStartTime.value) {
                         return '计算中...';
                     }
+                    
                     const elapsed = Date.now() - bruteforceStartTime.value;
-                    const avgTimePerAttempt = elapsed / bruteforceProgress.value.current;
-                    const remaining = (bruteforceProgress.value.total - bruteforceProgress.value.current) * avgTimePerAttempt;
+                    const currentProgress = bruteforceProgress.value.current;
+                    const totalProgress = bruteforceProgress.value.total;
+                    
+                    // 检查是否是续传模式
+                    const isResuming = resumeStartProgress.value > 0;
+                    
+                    let progressForCalculation;
+                    if (isResuming) {
+                        // 续传模式：只计算续传开始后的进度
+                        progressForCalculation = currentProgress - resumeStartProgress.value;
+                        if (progressForCalculation <= 0) return '计算中...';
+                    } else {
+                        // 正常模式：使用当前进度
+                        progressForCalculation = currentProgress;
+                        if (progressForCalculation === 0) return '计算中...';
+                    }
+                    
+                    const avgTimePerAttempt = elapsed / progressForCalculation;
+                    const remaining = (totalProgress - currentProgress) * avgTimePerAttempt;
                     const minutes = Math.floor(remaining / 60000);
                     const seconds = Math.floor((remaining % 60000) / 1000);
                     return `${minutes}分${seconds}秒`;
@@ -728,7 +747,10 @@
 
                     isBruteforcing.value = true;
                     bruteforceProgress.value = { current: checkpoint.current, total: checkpoint.total };
+                    
+                    // 记录续传开始的时间和起始进度
                     bruteforceStartTime.value = Date.now();
+                    resumeStartProgress.value = checkpoint.current; // 记录续传开始时的进度
                     
                     showLog(`从第${checkpoint.current + 1}个组合恢复爆破，剩余${remainingCombinations.length}个组合`, false);
 
@@ -791,6 +813,7 @@
                     isBruteforcing.value = true;
                     bruteforceProgress.value = { current: 0, total: combinations.length };
                     bruteforceStartTime.value = Date.now();
+                    resumeStartProgress.value = 0; // 重置续传起始进度
                     
                     showLog(`开始HEX爆破，共${combinations.length}个组合`, false);
 
