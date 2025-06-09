@@ -485,10 +485,10 @@
                     // 保存到localStorage
                     localStorage.setItem('expandedCards', JSON.stringify(expandedCards.value));
                     
-                    // 延迟重新初始化图标，确保DOM更新后执行
-                    setTimeout(() => {
+                    // 立即重新初始化图标，确保点击后图标立即更新
+                    nextTick(() => {
                         initializeLucideIcons();
-                    }, 100);
+                    });
                 };
 
                 // --- Load saved card states ---
