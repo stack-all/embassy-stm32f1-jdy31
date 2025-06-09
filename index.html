@@ -206,7 +206,7 @@
                     </div>
 
                     <!-- Checkpoint Management -->
-                    <div class="grid grid-cols-2 gap-2 mb-3">
+                    <div class="grid grid-cols-3 gap-2 mb-3">
                         <button @click="saveCheckpoint" :disabled="!bruteforceCheckpoint && bruteforceProgress.total === 0" 
                                 class="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white text-sm font-bold py-2 px-3 rounded-lg transition-all duration-300 flex items-center justify-center">
                             <i data-lucide="save" class="w-4 h-4 mr-1"></i>
@@ -216,6 +216,11 @@
                             <i data-lucide="folder-open" class="w-4 h-4 mr-1"></i>
                             加载
                         </button>
+                        <button @click="clearCheckpoint" :disabled="!canResume" 
+                                class="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white text-sm font-bold py-2 px-3 rounded-lg transition-all duration-300 flex items-center justify-center">
+                            <i data-lucide="trash-2" class="w-4 h-4 mr-1"></i>
+                            清除
+                        </button>
                     </div>
 
                     <!-- Hidden file input for loading -->
@@ -224,7 +229,7 @@
                     <!-- Checkpoint Info -->
                     <div v-if="canResume" class="bg-blue-800/30 border border-blue-600 rounded-lg p-3 mb-3">
                         <div class="text-sm">
-                            <strong>检查点:</strong> 第{{ bruteforceCheckpoint.current + 1 }}个，共{{ bruteforceCheckpoint.total }}个组合
+                            <strong>检查点:</strong> 第{{ bruteforceCheckpoint.current }}个，共{{ bruteforceCheckpoint.total }}个组合
                         </div>
                     </div>
 
@@ -335,7 +340,9 @@
 
                 const bruteforceProgressPercent = computed(() => {
                     if (bruteforceProgress.value.total === 0) return 0;
-                    return Math.round((bruteforceProgress.value.current / bruteforceProgress.value.total) * 100);
+                    // 确保百分比不会超过100%
+                    const percent = Math.round((bruteforceProgress.value.current / bruteforceProgress.value.total) * 100);
+                    return Math.min(100, Math.max(0, percent));
                 });
 
                 const estimatedTimeRemaining = computed(() => {
@@ -723,7 +730,7 @@
                             bruteforceCheckpoint.value = checkpoint;
                             canResume.value = true;
                             
-                            showLog(`检查点已加载：第${checkpoint.current + 1}个，共${checkpoint.total}个组合`, false, 3000);
+                            showLog(`检查点已加载：第${checkpoint.current}个，共${checkpoint.total}个组合`, false, 3000);
                         } catch (error) {
                             console.error('加载检查点失败:', error);
                             showLog(`加载检查点失败: ${error.message}`, true);
@@ -740,6 +747,7 @@
                     savedCombinations.value = [];
                     canResume.value = false;
                     bruteforceProgress.value = { current: 0, total: 0 };
+                    resumeStartProgress.value = 0;
                     showLog('检查点已清除', false, 2000);
                 };
 
@@ -772,7 +780,7 @@
 
                     isBruteforcing.value = true;
                     
-                    // 重要：保持检查点的原始进度，不要重新设置
+                    // 设置正确的进度状态
                     bruteforceProgress.value = {
                         current: checkpoint.current,
                         total: checkpoint.total
@@ -798,6 +806,7 @@
                         const actualIndex = checkpoint.current + remainingIndex;
                         
                         currentBruteforceCommand.value = command;
+                        // 修复：current应该是已完成的数量，所以应该是actualIndex + 1
                         bruteforceProgress.value.current = actualIndex + 1;
                         
                         // 更新检查点
@@ -823,63 +832,72 @@
                         return;
                     }
 
-                    const combinations = generateBruteforceCombinations(bruteforcePattern.value);
-                    
-                    if (combinations.length === 0) {
-                        showLog('没有生成任何组合', true);
-                        return;
-                    }
-
-                    // 保存组合数据供断点续传使用
-                    savedCombinations.value = combinations;
-                    bruteforceCheckpoint.value = {
-                        pattern: bruteforcePattern.value,
-                        delay: bruteforceDelay.value,
-                        maxAttempts: maxBruteforceAttempts.value,
-                        current: 0,
-                        total: combinations.length,
-                        combinations: combinations,
-                        timestamp: new Date().toISOString()
-                    };
-                    canResume.value = true;
-
-                    isBruteforcing.value = true;
-                    bruteforceProgress.value = { current: 0, total: combinations.length };
-                    bruteforceStartTime.value = Date.now();
-                    resumeStartProgress.value = 0; // 重置续传起始进度
-                    
-                    showLog(`开始HEX爆破，共${combinations.length}个组合`, false);
-
-                    const sendNextCommand = async (index) => {
-                        if (!isBruteforcing.value || index >= combinations.length) {
-                            isBruteforcing.value = false;
-                            if (index >= combinations.length) {
-                                showLog('HEX爆破完成！', false);
-                                clearCheckpoint();
-                            }
+                    try {
+                        const combinations = generateBruteforceCombinations(bruteforcePattern.value);
+                        
+                        if (combinations.length === 0) {
+                            showLog('没有生成任何组合', true);
                             return;
                         }
 
-                        const command = combinations[index];
-                        currentBruteforceCommand.value = command;
-                        bruteforceProgress.value.current = index + 1;
+                        // 清除之前的检查点状态
+                        clearCheckpoint();
+
+                        // 保存组合数据供断点续传使用
+                        savedCombinations.value = combinations;
+                        bruteforceCheckpoint.value = {
+                            pattern: bruteforcePattern.value,
+                            delay: bruteforceDelay.value,
+                            maxAttempts: maxBruteforceAttempts.value,
+                            current: 0,
+                            total: combinations.length,
+                            combinations: combinations,
+                            timestamp: new Date().toISOString()
+                        };
+                        canResume.value = true;
+
+                        isBruteforcing.value = true;
+                        bruteforceProgress.value = { current: 0, total: combinations.length };
+                        bruteforceStartTime.value = Date.now();
+                        resumeStartProgress.value = 0; // 重置续传起始进度
                         
-                        // 更新检查点
-                        bruteforceCheckpoint.value.current = index + 1;
+                        showLog(`开始HEX爆破，共${combinations.length}个组合`, false);
 
-                        try {
-                            await sendCommand(command);
-                        } catch (error) {
-                            console.error('爆破命令发送失败:', error);
-                        }
+                        const sendNextCommand = async (index) => {
+                            if (!isBruteforcing.value || index >= combinations.length) {
+                                isBruteforcing.value = false;
+                                if (index >= combinations.length) {
+                                    showLog('HEX爆破完成！', false);
+                                    clearCheckpoint();
+                                }
+                                return;
+                            }
 
-                        bruteforceTimeoutId.value = setTimeout(() => {
-                            sendNextCommand(index + 1);
-                        }, bruteforceDelay.value);
-                    };
+                            const command = combinations[index];
+                            currentBruteforceCommand.value = command;
+                            // 修复：current应该是已完成的数量
+                            bruteforceProgress.value.current = index + 1;
+                            
+                            // 更新检查点
+                            bruteforceCheckpoint.value.current = index + 1;
 
-                    // Start the bruteforce sequence
-                    sendNextCommand(0);
+                            try {
+                                await sendCommand(command);
+                            } catch (error) {
+                                console.error('爆破命令发送失败:', error);
+                            }
+
+                            bruteforceTimeoutId.value = setTimeout(() => {
+                                sendNextCommand(index + 1);
+                            }, bruteforceDelay.value);
+                        };
+
+                        // Start the bruteforce sequence
+                        sendNextCommand(0);
+                    } catch (error) {
+                        console.error('爆破初始化失败:', error);
+                        showLog(`爆破初始化失败: ${error.message}`, true);
+                    }
                 };
 
                 const stopBruteforce = () => {
