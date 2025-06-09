@@ -119,7 +119,7 @@
                 <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('connection')">
                     <i data-lucide="bluetooth" class="lucide-icon mr-2 text-cyan-400"></i>
                     设备连接
-                    <i :data-lucide="connectionIcon" class="lucide-icon ml-auto text-gray-400"></i>
+                    <i :data-lucide="expandedCards.connection ? 'chevron-up' : 'chevron-down'" class="lucide-icon ml-auto text-gray-400"></i>
                 </h2>
                 <div v-show="expandedCards.connection">
                     <div class="flex items-center justify-between">
@@ -146,7 +146,7 @@
                 <h2 class="text-lg font-semibold mb-4 flex items-center cursor-pointer" @click="toggleCard('washingModes')">
                     <i data-lucide="washing-machine" class="lucide-icon mr-2 text-cyan-400"></i>
                     洗衣模式
-                    <i :data-lucide="washingModesIcon" class="lucide-icon ml-auto text-gray-400"></i>
+                    <i :data-lucide="expandedCards.washingModes ? 'chevron-up' : 'chevron-down'" class="lucide-icon ml-auto text-gray-400"></i>
                 </h2>
                 <div v-show="expandedCards.washingModes" class="grid grid-cols-2 gap-3">
                     <button v-for="mode in presetModes" :key="mode.name" @click="sendCommand(mode.command)" :disabled="!isConnected" class="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed text-white py-3 px-2 rounded-lg transition-all duration-300 flex flex-col items-center justify-center text-sm">
@@ -161,7 +161,7 @@
                 <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('bruteforce')">
                     <i data-lucide="search" class="lucide-icon mr-2 text-cyan-400"></i>
                     HEX 爆破工具
-                    <i :data-lucide="bruteforceIcon" class="lucide-icon ml-auto text-gray-400"></i>
+                    <i :data-lucide="expandedCards.bruteforce ? 'chevron-up' : 'chevron-down'" class="lucide-icon ml-auto text-gray-400"></i>
                 </h2>
                 <div v-show="expandedCards.bruteforce">
                     <!-- Pattern Input -->
@@ -261,7 +261,7 @@
                  <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('manual')">
                     <i data-lucide="terminal" class="lucide-icon mr-2 text-cyan-400"></i>
                     手动命令
-                    <i :data-lucide="manualIcon" class="lucide-icon ml-auto text-gray-400"></i>
+                    <i :data-lucide="expandedCards.manual ? 'chevron-up' : 'chevron-down'" class="lucide-icon ml-auto text-gray-400"></i>
                 </h2>
                 <div v-show="expandedCards.manual" class="space-y-2">
                     <input type="text" v-model="manualCommand" placeholder="例如: AA 01 9B..." class="w-full bg-gray-800 border border-gray-600 focus:border-cyan-500 focus:ring-cyan-500 text-white rounded-lg px-3 py-2 transition-colors">
@@ -349,12 +349,6 @@
                     return Math.round((bruteforceProgress.value.current / bruteforceProgress.value.total) * 100);
                 });
 
-                // Card icon computed properties
-                const connectionIcon = computed(() => expandedCards.value.connection ? 'chevron-up' : 'chevron-down');
-                const washingModesIcon = computed(() => expandedCards.value.washingModes ? 'chevron-up' : 'chevron-down');
-                const bruteforceIcon = computed(() => expandedCards.value.bruteforce ? 'chevron-up' : 'chevron-down');
-                const manualIcon = computed(() => expandedCards.value.manual ? 'chevron-up' : 'chevron-down');
-
                 const estimatedTimeRemaining = computed(() => {
                     if (!isBruteforcing.value || !bruteforceStartTime.value) {
                         return '计算中...';
@@ -393,9 +387,11 @@
 
                 // --- Initialize Lucide Icons ---
                 const initializeLucideIcons = () => {
-                    if (window.lucide) {
-                        window.lucide.createIcons();
-                    }
+                    nextTick(() => {
+                        if (window.lucide) {
+                            window.lucide.createIcons();
+                        }
+                    });
                 };
 
                 // --- PWA Functions ---
@@ -489,10 +485,10 @@
                     // 保存到localStorage
                     localStorage.setItem('expandedCards', JSON.stringify(expandedCards.value));
                     
-                    // 立即重新初始化图标，确保点击后图标立即更新
-                    nextTick(() => {
+                    // 延迟重新初始化图标，确保DOM更新后执行
+                    setTimeout(() => {
                         initializeLucideIcons();
-                    });
+                    }, 100);
                 };
 
                 // --- Load saved card states ---
@@ -649,7 +645,7 @@
                             const highNibble = upperPart[0];
                             unknownPositions.push({ index, type: 'fixed_high', range: 16, prefix: highNibble }); // X0-XF
                         } else if (/^X[0-9A-F]$/.test(upperPart)) {
-                            // 匹配 X1, X2, XA 等模式
+                            // 匹配 X1, X2, X3, XA 等模式
                             const lowNibble = upperPart[1];
                             unknownPositions.push({ index, type: 'fixed_low', range: 16, suffix: lowNibble }); // 0X-FX
                         }
@@ -968,10 +964,6 @@
                     bruteforceCheckpoint,
                     canResume,
                     expandedCards,
-                    connectionIcon,
-                    washingModesIcon,
-                    bruteforceIcon,
-                    manualIcon,
                     scanAndConnect,
                     disconnect,
                     sendCommand,
