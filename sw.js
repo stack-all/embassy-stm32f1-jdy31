@@ -1,4 +1,4 @@
-const CACHE_NAME = 'washing-machine-controller-v1.2';
+const CACHE_NAME = 'washing-machine-controller-v1.3';
 const urlsToCache = [
     './',
     './index.html',
@@ -120,5 +120,21 @@ self.addEventListener('fetch', event => {
 self.addEventListener('message', event => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
+    } else if (event.data && event.data.type === 'CLEAR_CACHE') {
+        // Clear all caches when requested
+        event.waitUntil(
+            caches.keys().then(cacheNames => {
+                return Promise.all(
+                    cacheNames.map(cacheName => caches.delete(cacheName))
+                );
+            }).then(() => {
+                // Notify main thread that cache is cleared
+                self.clients.matchAll().then(clients => {
+                    clients.forEach(client => {
+                        client.postMessage({ type: 'CACHE_CLEARED' });
+                    });
+                });
+            })
+        );
     }
 });
