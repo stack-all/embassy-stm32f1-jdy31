@@ -393,11 +393,9 @@
 
                 // --- Initialize Lucide Icons ---
                 const initializeLucideIcons = () => {
-                    nextTick(() => {
-                        if (window.lucide) {
-                            window.lucide.createIcons();
-                        }
-                    });
+                    if (window.lucide) {
+                        window.lucide.createIcons();
+                    }
                 };
 
                 // --- PWA Functions ---
@@ -651,7 +649,7 @@
                             const highNibble = upperPart[0];
                             unknownPositions.push({ index, type: 'fixed_high', range: 16, prefix: highNibble }); // X0-XF
                         } else if (/^X[0-9A-F]$/.test(upperPart)) {
-                            // 匹配 X1, X2, X3, XA 等模式
+                            // 匹配 X1, X2, XA 等模式
                             const lowNibble = upperPart[1];
                             unknownPositions.push({ index, type: 'fixed_low', range: 16, suffix: lowNibble }); // 0X-FX
                         }
