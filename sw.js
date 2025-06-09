@@ -1,13 +1,3 @@
-const CACHE_NAME = 'washing-machine-controller-v1.3';
-const urlsToCache = [
-    './',
-    './index.html',
-    'https://unpkg.com/@tailwindcss/browser@4.0.0/dist/index.mjs',
-    'https://unpkg.com/vue@3/dist/vue.global.js',
-    'https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap',
-    'https://unpkg.com/lucide@latest/dist/umd/lucide.js'
-];
-
 // Install event - cache resources
 self.addEventListener('install', event => {
     console.log('Service Worker installing...');
@@ -120,21 +110,5 @@ self.addEventListener('fetch', event => {
 self.addEventListener('message', event => {
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
-    } else if (event.data && event.data.type === 'CLEAR_CACHE') {
-        // Clear all caches when requested
-        event.waitUntil(
-            caches.keys().then(cacheNames => {
-                return Promise.all(
-                    cacheNames.map(cacheName => caches.delete(cacheName))
-                );
-            }).then(() => {
-                // Notify main thread that cache is cleared
-                self.clients.matchAll().then(clients => {
-                    clients.forEach(client => {
-                        client.postMessage({ type: 'CACHE_CLEARED' });
-                    });
-                });
-            })
-        );
     }
 });
