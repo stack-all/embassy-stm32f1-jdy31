@@ -368,6 +368,9 @@
                     window.addEventListener('online', updateOnlineStatus);
                     window.addEventListener('offline', updateOnlineStatus);
 
+                    // 定期检查蓝牙连接状态
+                    setInterval(checkConnectionStatus, 2000);
+
                     if (isBluetoothAPIAvailable.value) {
                        showLog("环境检查通过。请连接您的蓝牙设备。");
                     }
@@ -445,11 +448,31 @@
                     isConnected.value = false;
                     bluetoothDevice.value = null;
                     txCharacteristic.value = null;
+                    
+                    // 停止任何正在进行的爆破操作
+                    if (isBruteforcing.value) {
+                        stopBruteforce();
+                    }
+                };
+
+                // 定期检查连接状态
+                const checkConnectionStatus = () => {
+                    if (bluetoothDevice.value && !bluetoothDevice.value.gatt.connected && isConnected.value) {
+                        // 蓝牙设备存在但未连接，而UI显示已连接
+                        onDisconnected();
+                    }
                 };
 
                 const sendCommand = async (commandString) => {
                     if (!isConnected.value || !txCharacteristic.value) {
                         showLog('错误：请先连接设备', true);
+                        return;
+                    }
+
+                    // 发送前检查连接状态
+                    if (bluetoothDevice.value && !bluetoothDevice.value.gatt.connected) {
+                        onDisconnected();
+                        showLog('设备已断开，请重新连接', true);
                         return;
                     }
 
@@ -468,6 +491,11 @@
                     } catch (error) {
                         showLog(`发送失败: ${error.message}`, true);
                         console.error('Send Error:', error);
+                        
+                        // 如果发送失败，可能是连接断开了
+                        if (error.name === 'NetworkError' || error.message.includes('GATT')) {
+                            onDisconnected();
+                        }
                     }
                 };
                 
