@@ -188,11 +188,49 @@
                         <i data-lucide="play" class="lucide-icon mr-2"></i>
                         开始爆破
                     </button>
+                    <button @click="resumeBruteforce" :disabled="!isConnected || isBruteforcing || !canResume" 
+                            class="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center">
+                        <i data-lucide="play-circle" class="lucide-icon mr-2"></i>
+                        续传
+                    </button>
                     <button @click="stopBruteforce" :disabled="!isBruteforcing"
                             class="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg transition-all duration-300 flex items-center justify-center">
                         <i data-lucide="stop-circle" class="lucide-icon mr-2"></i>
                         停止爆破
                     </button>
+                </div>
+
+                <!-- Checkpoint Management -->
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <button @click="saveCheckpoint" :disabled="!bruteforceCheckpoint && bruteforceProgress.total === 0" 
+                            class="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white text-sm font-bold py-2 px-3 rounded-lg transition-all duration-300 flex items-center justify-center">
+                        <i data-lucide="save" class="w-4 h-4 mr-1"></i>
+                        保存进度
+                    </button>
+                    <button @click="loadCheckpoint" class="bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold py-2 px-3 rounded-lg transition-all duration-300 flex items-center justify-center">
+                        <i data-lucide="upload" class="w-4 h-4 mr-1"></i>
+                        导入进度
+                    </button>
+                </div>
+
+                <!-- Hidden file input for loading -->
+                <input type="file" ref="fileInput" @change="handleFileLoad" accept=".json" style="display: none;">
+
+                <!-- Checkpoint Info -->
+                <div v-if="canResume" class="bg-blue-800/30 border border-blue-600 rounded-lg p-3 mb-3">
+                    <div class="text-sm">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-medium">保存的进度:</span>
+                            <button @click="clearCheckpoint" class="text-blue-400 hover:text-blue-300 text-xs">
+                                <i data-lucide="x" class="w-3 h-3"></i>
+                            </button>
+                        </div>
+                        <div class="text-xs text-blue-300">
+                            <div>模式: {{ bruteforceCheckpoint?.pattern || '无' }}</div>
+                            <div>进度: {{ bruteforceCheckpoint?.current || 0 }} / {{ bruteforceCheckpoint?.total || 0 }}</div>
+                            <div>保存时间: {{ bruteforceCheckpoint?.timestamp ? new Date(bruteforceCheckpoint.timestamp).toLocaleString() : '无' }}</div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Progress Info -->
@@ -262,6 +300,11 @@
                 const currentBruteforceCommand = ref('');
                 const bruteforceStartTime = ref(null);
                 const bruteforceTimeoutId = ref(null);
+                
+                // Bruteforce checkpoint state
+                const bruteforceCheckpoint = ref(null);
+                const savedCombinations = ref([]);
+                const canResume = ref(false);
 
                 const presetModes = ref([
                     { name: '强力洗', command: 'AA 01 9A 01 02 A9 16 55', icon: 'zap' },
@@ -586,6 +629,133 @@
                     return combinations;
                 };
 
+                // --- Checkpoint Functions ---
+                const saveCheckpoint = () => {
+                    const checkpoint = {
+                        pattern: bruteforcePattern.value,
+                        delay: bruteforceDelay.value,
+                        maxAttempts: maxBruteforceAttempts.value,
+                        current: bruteforceProgress.value.current,
+                        total: bruteforceProgress.value.total,
+                        combinations: savedCombinations.value,
+                        timestamp: Date.now()
+                    };
+                    
+                    const blob = new Blob([JSON.stringify(checkpoint, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `bruteforce-checkpoint-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, '-')}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showLog('爆破进度已保存到文件', false, 2000);
+                };
+
+                const loadCheckpoint = () => {
+                    if (document.querySelector('input[type="file"]')) {
+                        document.querySelector('input[type="file"]').click();
+                    }
+                };
+
+                const handleFileLoad = (event) => {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const checkpoint = JSON.parse(e.target.result);
+                            
+                            // 验证检查点数据
+                            if (!checkpoint.pattern || !checkpoint.combinations || !checkpoint.total) {
+                                showLog('无效的检查点文件格式', true, 3000);
+                                return;
+                            }
+
+                            bruteforceCheckpoint.value = checkpoint;
+                            savedCombinations.value = checkpoint.combinations;
+                            canResume.value = true;
+                            
+                            // 恢复配置
+                            bruteforcePattern.value = checkpoint.pattern;
+                            bruteforceDelay.value = checkpoint.delay || 1000;
+                            maxBruteforceAttempts.value = checkpoint.maxAttempts || 256;
+                            bruteforceProgress.value = { current: checkpoint.current, total: checkpoint.total };
+                            
+                            showLog(`检查点已加载：${checkpoint.current}/${checkpoint.total}`, false, 3000);
+                        } catch (error) {
+                            showLog('检查点文件解析失败', true, 3000);
+                            console.error('Checkpoint parse error:', error);
+                        }
+                    };
+                    reader.readAsText(file);
+                    
+                    // 清空文件输入
+                    event.target.value = '';
+                };
+
+                const clearCheckpoint = () => {
+                    bruteforceCheckpoint.value = null;
+                    savedCombinations.value = [];
+                    canResume.value = false;
+                    bruteforceProgress.value = { current: 0, total: 0 };
+                    showLog('检查点已清除', false, 2000);
+                };
+
+                const resumeBruteforce = async () => {
+                    if (!isConnected.value || isBruteforcing.value || !canResume.value || !bruteforceCheckpoint.value) {
+                        return;
+                    }
+
+                    const checkpoint = bruteforceCheckpoint.value;
+                    const combinations = checkpoint.combinations;
+                    
+                    if (!combinations || combinations.length === 0) {
+                        showLog('没有可恢复的爆破组合', true);
+                        return;
+                    }
+
+                    isBruteforcing.value = true;
+                    bruteforceProgress.value = { current: checkpoint.current, total: checkpoint.total };
+                    bruteforceStartTime.value = Date.now();
+                    
+                    showLog(`从第${checkpoint.current + 1}个组合恢复爆破，共${checkpoint.total}个组合`, false);
+
+                    const sendNextCommand = async (index) => {
+                        if (!isBruteforcing.value || index >= combinations.length) {
+                            stopBruteforce();
+                            return;
+                        }
+
+                        const command = combinations[index];
+                        currentBruteforceCommand.value = command;
+                        bruteforceProgress.value.current = checkpoint.current + index + 1;
+
+                        // 实时更新检查点
+                        bruteforceCheckpoint.value.current = bruteforceProgress.value.current;
+
+                        try {
+                            await sendCommand(command);
+                            
+                            // Schedule next command
+                            bruteforceTimeoutId.value = setTimeout(() => {
+                                sendNextCommand(index + 1);
+                            }, bruteforceDelay.value);
+                            
+                        } catch (error) {
+                            showLog(`爆破发送失败: ${error.message}`, true);
+                            stopBruteforce();
+                        }
+                    };
+
+                    // 从断点位置开始
+                    const remainingCombinations = combinations.slice(checkpoint.current);
+                    sendNextCommand(0);
+                };
+
                 const startBruteforce = async () => {
                     if (!isConnected.value || isBruteforcing.value || !isValidBruteforcePattern.value) {
                         return;
@@ -597,6 +767,19 @@
                         showLog('无法生成有效的爆破组合', true);
                         return;
                     }
+
+                    // 保存组合数据供断点续传使用
+                    savedCombinations.value = combinations;
+                    bruteforceCheckpoint.value = {
+                        pattern: bruteforcePattern.value,
+                        delay: bruteforceDelay.value,
+                        maxAttempts: maxBruteforceAttempts.value,
+                        current: 0,
+                        total: combinations.length,
+                        combinations: combinations,
+                        timestamp: Date.now()
+                    };
+                    canResume.value = true;
 
                     isBruteforcing.value = true;
                     bruteforceProgress.value = { current: 0, total: combinations.length };
@@ -613,6 +796,9 @@
                         const command = combinations[index];
                         currentBruteforceCommand.value = command;
                         bruteforceProgress.value.current = index + 1;
+
+                        // 实时更新检查点
+                        bruteforceCheckpoint.value.current = bruteforceProgress.value.current;
 
                         try {
                             await sendCommand(command);
@@ -669,12 +855,19 @@
                     isValidBruteforcePattern,
                     bruteforceProgressPercent,
                     estimatedTimeRemaining,
+                    bruteforceCheckpoint,
+                    canResume,
                     scanAndConnect,
                     disconnect,
                     sendCommand,
                     sendManualCommand,
                     startBruteforce,
+                    resumeBruteforce,
                     stopBruteforce,
+                    saveCheckpoint,
+                    loadCheckpoint,
+                    handleFileLoad,
+                    clearCheckpoint,
                     installPWA,
                     dismissInstallPrompt
                 };
