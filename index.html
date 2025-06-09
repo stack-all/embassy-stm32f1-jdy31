@@ -718,19 +718,27 @@
                         return;
                     }
 
+                    // 从断点位置开始的剩余组合
+                    const remainingCombinations = combinations.slice(checkpoint.current);
+                    
+                    if (remainingCombinations.length === 0) {
+                        showLog('爆破已完成，无需继续', false);
+                        return;
+                    }
+
                     isBruteforcing.value = true;
                     bruteforceProgress.value = { current: checkpoint.current, total: checkpoint.total };
                     bruteforceStartTime.value = Date.now();
                     
-                    showLog(`从第${checkpoint.current + 1}个组合恢复爆破，共${checkpoint.total}个组合`, false);
+                    showLog(`从第${checkpoint.current + 1}个组合恢复爆破，剩余${remainingCombinations.length}个组合`, false);
 
                     const sendNextCommand = async (index) => {
-                        if (!isBruteforcing.value || index >= combinations.length) {
+                        if (!isBruteforcing.value || index >= remainingCombinations.length) {
                             stopBruteforce();
                             return;
                         }
 
-                        const command = combinations[index];
+                        const command = remainingCombinations[index];
                         currentBruteforceCommand.value = command;
                         bruteforceProgress.value.current = checkpoint.current + index + 1;
 
@@ -751,8 +759,7 @@
                         }
                     };
 
-                    // 从断点位置开始
-                    const remainingCombinations = combinations.slice(checkpoint.current);
+                    // 开始续传
                     sendNextCommand(0);
                 };
 
