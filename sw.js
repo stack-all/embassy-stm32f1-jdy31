@@ -1,3 +1,13 @@
+const CACHE_NAME = 'washing-machine-controller-v1.2';
+const urlsToCache = [
+    './',
+    './index.html',
+    'https://unpkg.com/@tailwindcss/browser@4.0.0/dist/index.mjs',
+    'https://unpkg.com/vue@3/dist/vue.global.js',
+    'https://fonts.bunny.net/css?family=inter:400,500,600,700&display=swap',
+    'https://unpkg.com/lucide@latest/dist/umd/lucide.js'
+];
+
 // Install event - cache resources
 self.addEventListener('install', event => {
     console.log('Service Worker installing...');
