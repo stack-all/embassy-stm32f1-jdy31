@@ -161,10 +161,10 @@
                 
                 <!-- Pattern Input -->
                 <div class="mb-3">
-                    <label class="block text-sm font-medium mb-1">HEX 模式 (用 XX 表示未知位):</label>
-                    <input type="text" v-model="bruteforcePattern" placeholder="例如: AA 01 9A XX 02 XX XX 55" 
+                    <label class="block text-sm font-medium mb-1">HEX 模式 (用 X 表示未知位):</label>
+                    <input type="text" v-model="bruteforcePattern" placeholder="例如: AA 01 9A XX 02 0X X0 1X AX 55" 
                            class="w-full bg-gray-800 border border-gray-600 focus:border-cyan-500 focus:ring-cyan-500 text-white rounded-lg px-3 py-2 transition-colors">
-                    <p class="text-xs text-gray-400 mt-1">使用 XX 表示需要爆破的位置，其他位置保持固定</p>
+                    <p class="text-xs text-gray-400 mt-1">XX = 完整字节 (00-FF)，0X = 低半字节 (00-0F)，X0 = 高半字节 (00-F0)，1X = 固定高位1 (10-1F)，AX = 固定高位A (A0-AF)，等等</p>
                 </div>
 
                 <!-- Settings Row -->
@@ -281,7 +281,7 @@
                 // Bruteforce computed properties
                 const isValidBruteforcePattern = computed(() => {
                     const pattern = bruteforcePattern.value.trim();
-                    return pattern && pattern.includes('XX') && /^[0-9a-fA-F\sX]+$/.test(pattern);
+                    return pattern && pattern.includes('X') && /^[0-9a-fA-F\sX]+$/.test(pattern);
                 });
 
                 const bruteforceProgressPercent = computed(() => {
@@ -491,10 +491,23 @@
                     const unknownPositions = [];
                     const combinations = [];
 
-                    // Find positions of XX (unknown bytes)
+                    // Find positions and types of unknown patterns
                     parts.forEach((part, index) => {
-                        if (part.toUpperCase() === 'XX') {
-                            unknownPositions.push(index);
+                        const upperPart = part.toUpperCase();
+                        if (upperPart === 'XX') {
+                            unknownPositions.push({ index, type: 'full', range: 256 }); // 00-FF
+                        } else if (upperPart === '0X') {
+                            unknownPositions.push({ index, type: 'low', range: 16 }); // 00-0F
+                        } else if (upperPart === 'X0') {
+                            unknownPositions.push({ index, type: 'high', range: 16 }); // 00-F0 (步长16)
+                        } else if (/^[0-9A-F]X$/.test(upperPart)) {
+                            // 匹配 1X, 2X, 3X, AX 等模式
+                            const highNibble = upperPart[0];
+                            unknownPositions.push({ index, type: 'fixed_high', range: 16, prefix: highNibble }); // X0-XF
+                        } else if (/^X[0-9A-F]$/.test(upperPart)) {
+                            // 匹配 X1, X2, X3, XA 等模式
+                            const lowNibble = upperPart[1];
+                            unknownPositions.push({ index, type: 'fixed_low', range: 16, suffix: lowNibble }); // 0X-FX
                         }
                     });
 
@@ -502,18 +515,39 @@
                         return [pattern];
                     }
 
-                    // Limit combinations to prevent browser freeze
-                    const maxCombinations = Math.min(maxBruteforceAttempts.value, Math.pow(256, unknownPositions.length));
+                    // Calculate total combinations
+                    const totalCombinations = unknownPositions.reduce((total, pos) => total * pos.range, 1);
+                    const maxCombinations = Math.min(maxBruteforceAttempts.value, totalCombinations);
                     
                     for (let i = 0; i < maxCombinations; i++) {
                         const combination = [...parts];
                         let temp = i;
                         
-                        // Convert number to multi-byte values
+                        // Generate values for each unknown position
                         for (let j = unknownPositions.length - 1; j >= 0; j--) {
-                            const value = temp % 256;
-                            temp = Math.floor(temp / 256);
-                            combination[unknownPositions[j]] = value.toString(16).toUpperCase().padStart(2, '0');
+                            const pos = unknownPositions[j];
+                            const value = temp % pos.range;
+                            temp = Math.floor(temp / pos.range);
+                            
+                            let hexValue;
+                            if (pos.type === 'full') {
+                                // XX: 00-FF
+                                hexValue = value.toString(16).toUpperCase().padStart(2, '0');
+                            } else if (pos.type === 'low') {
+                                // 0X: 00-0F
+                                hexValue = '0' + value.toString(16).toUpperCase();
+                            } else if (pos.type === 'high') {
+                                // X0: 00-F0 (步长16)
+                                hexValue = (value * 16).toString(16).toUpperCase().padStart(2, '0');
+                            } else if (pos.type === 'fixed_high') {
+                                // 1X, 2X, AX: 10-1F, 20-2F, A0-AF
+                                hexValue = pos.prefix + value.toString(16).toUpperCase();
+                            } else if (pos.type === 'fixed_low') {
+                                // X1, X2, XA: 01-F1, 02-F2, 0A-FA
+                                hexValue = value.toString(16).toUpperCase() + pos.suffix;
+                            }
+                            
+                            combination[pos.index] = hexValue;
                         }
                         
                         combinations.push(combination.join(' '));
