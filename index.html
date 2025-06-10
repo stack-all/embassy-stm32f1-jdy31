@@ -284,14 +284,15 @@
             </div>
 
             <!-- Device Response Card -->
-            <div v-if="lastDeviceResponse" class="bg-gray-700/50 rounded-lg p-4 mb-6" data-card="response">
+            <div class="bg-gray-700/50 rounded-lg p-4 mb-6" data-card="response">
                 <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('response')">
                     <i data-lucide="radio" class="lucide-icon mr-2 text-cyan-400"></i>
                     设备响应
                     <i :data-lucide="expandedCards.response ? 'chevron-up' : 'chevron-down'" class="lucide-icon ml-auto text-gray-400"></i>
                 </h2>
                 <div v-show="expandedCards.response" class="space-y-3">
-                    <div class="bg-green-800/30 border border-green-600 rounded-lg p-3">
+                    <!-- 有响应时显示 -->
+                    <div v-if="lastDeviceResponse" class="bg-green-800/30 border border-green-600 rounded-lg p-3">
                         <div class="text-sm">
                             <div class="flex items-center justify-between mb-2">
                                 <span class="font-medium text-green-300">最后响应:</span>
@@ -310,6 +311,15 @@
                             <div class="text-xs text-green-300 mt-1">
                                 对应命令: {{ lastDeviceResponse.command }}
                             </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 没有响应时显示 -->
+                    <div v-else class="bg-gray-800/50 border border-gray-600 rounded-lg p-3">
+                        <div class="text-sm text-gray-400 text-center py-2">
+                            <i data-lucide="radio" class="lucide-icon mx-auto mb-2 opacity-50"></i>
+                            <div>暂无响应</div>
+                            <div class="text-xs mt-1">设备响应将在此处显示</div>
                         </div>
                     </div>
                 </div>
