@@ -589,8 +589,8 @@
                         const service = await server.getPrimaryService(primaryServiceUUID);
                         showLog('服务已找到，正在查找特征...', false);
 
-                        // 新模块默认特征UUID是0xffe1
-                        const txCharacteristicUUID = 0xffe1;
+                        // 新模块默认特征UUID是0xffe2
+                        const txCharacteristicUUID = 0xffe2;
                         
                         try {
                             txCharacteristic.value = await service.getCharacteristic(txCharacteristicUUID);
