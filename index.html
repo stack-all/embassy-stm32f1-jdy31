@@ -571,7 +571,7 @@
                     try {
                         showLog('正在扫描蓝牙设备...', false);
                         
-                        const primaryServiceUUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+                        const primaryServiceUUID = '0xffe0';
 
                         const device = await navigator.bluetooth.requestDevice({
                             acceptAllDevices: true,
@@ -588,7 +588,7 @@
                         const service = await server.getPrimaryService(primaryServiceUUID);
                         showLog('服务已找到，正在查找特征...', false);
 
-                        const txCharacteristicUUID = '0000ffe1-0000-1000-8000-00805f9b34fb';
+                        const txCharacteristicUUID = '0xffe1';
                         txCharacteristic.value = await service.getCharacteristic(txCharacteristicUUID);
                         
                         showLog('特征已找到，连接成功！', false);
