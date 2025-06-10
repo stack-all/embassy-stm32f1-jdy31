@@ -156,38 +156,6 @@
                 </div>
             </div>
 
-            <!-- Device Response Card -->
-            <div v-if="lastDeviceResponse" class="bg-gray-700/50 rounded-lg p-4 mb-6" data-card="response">
-                <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('response')">
-                    <i data-lucide="radio" class="lucide-icon mr-2 text-green-400"></i>
-                    设备响应
-                    <i :data-lucide="expandedCards.response ? 'chevron-up' : 'chevron-down'" class="lucide-icon ml-auto text-gray-400"></i>
-                </h2>
-                <div v-show="expandedCards.response" class="space-y-3">
-                    <div class="bg-green-800/30 border border-green-600 rounded-lg p-3">
-                        <div class="text-sm">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="font-medium text-green-300">最后响应:</span>
-                                <span class="text-xs text-gray-400">{{ lastDeviceResponse.timestamp }}</span>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <code class="bg-gray-900 text-green-300 px-2 py-1 rounded text-xs font-mono">
-                                    {{ lastDeviceResponse.hex }}
-                                </code>
-                                <button @click="copyToClipboard(lastDeviceResponse.hex)" 
-                                        class="ml-2 p-1 hover:bg-green-600/30 rounded transition-colors" 
-                                        title="复制响应数据">
-                                    <i data-lucide="copy" class="w-3 h-3"></i>
-                                </button>
-                            </div>
-                            <div class="text-xs text-green-300 mt-1">
-                                对应命令: {{ lastDeviceResponse.command }}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- HEX Bruteforce Card -->
             <div class="bg-gray-700/50 rounded-lg p-4 mb-6" data-card="bruteforce">
                 <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('bruteforce')">
@@ -312,6 +280,38 @@
                         <i data-lucide="send" class="lucide-icon mr-2"></i>
                         发送命令
                     </button>
+                </div>
+            </div>
+
+            <!-- Device Response Card -->
+            <div v-if="lastDeviceResponse" class="bg-gray-700/50 rounded-lg p-4 mb-6" data-card="response">
+                <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('response')">
+                    <i data-lucide="radio" class="lucide-icon mr-2 text-cyan-400"></i>
+                    设备响应
+                    <i :data-lucide="expandedCards.response ? 'chevron-up' : 'chevron-down'" class="lucide-icon ml-auto text-gray-400"></i>
+                </h2>
+                <div v-show="expandedCards.response" class="space-y-3">
+                    <div class="bg-green-800/30 border border-green-600 rounded-lg p-3">
+                        <div class="text-sm">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-medium text-green-300">最后响应:</span>
+                                <span class="text-xs text-gray-400">{{ lastDeviceResponse.timestamp }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <code class="bg-gray-900 text-green-300 px-2 py-1 rounded text-xs font-mono">
+                                    {{ lastDeviceResponse.hex }}
+                                </code>
+                                <button @click="copyToClipboard(lastDeviceResponse.hex)" 
+                                        class="ml-2 p-1 hover:bg-green-600/30 rounded transition-colors" 
+                                        title="复制响应数据">
+                                    <i data-lucide="copy" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                            <div class="text-xs text-green-300 mt-1">
+                                对应命令: {{ lastDeviceResponse.command }}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
