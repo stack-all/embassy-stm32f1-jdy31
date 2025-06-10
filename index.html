@@ -571,6 +571,7 @@
                     try {
                         showLog('正在扫描蓝牙设备...', false);
                         
+                        // 新模块使用16位UUID，根据资料默认服务UUID是0xffe0
                         const primaryServiceUUID = 0xffe0;
 
                         const device = await navigator.bluetooth.requestDevice({
@@ -588,11 +589,34 @@
                         const service = await server.getPrimaryService(primaryServiceUUID);
                         showLog('服务已找到，正在查找特征...', false);
 
+                        // 新模块默认特征UUID是0xffe1
                         const txCharacteristicUUID = 0xffe1;
-                        txCharacteristic.value = await service.getCharacteristic(txCharacteristicUUID);
                         
-                        showLog('特征已找到，连接成功！', false);
-                        isConnected.value = true;
+                        try {
+                            txCharacteristic.value = await service.getCharacteristic(txCharacteristicUUID);
+                            showLog('特征已找到，连接成功！', false);
+                            isConnected.value = true;
+                        } catch (charError) {
+                            // 如果默认特征值不工作，尝试获取所有特征值
+                            showLog('默认特征不可用，尝试获取所有可用特征值...', false);
+                            const characteristics = await service.getCharacteristics();
+                            
+                            if (characteristics.length > 0) {
+                                // 使用第一个可写入的特征值
+                                for (let char of characteristics) {
+                                    console.log(`发现特征: ${char.uuid}, 属性:`, char.properties);
+                                    if (char.properties.write || char.properties.writeWithoutResponse) {
+                                        txCharacteristic.value = char;
+                                        showLog(`使用特征值: ${char.uuid}`, false);
+                                        isConnected.value = true;
+                                        return;
+                                    }
+                                }
+                                throw new Error('未找到可写入的特征值');
+                            } else {
+                                throw new Error('未找到任何特征值');
+                            }
+                        }
 
                     } catch (error) {
                         if (error.name !== 'NotFoundError') {
@@ -648,16 +672,50 @@
 
                     try {
                         const commandBytes = hexToBytes(commandString);
-                        await txCharacteristic.value.writeValue(commandBytes);
-                        showLog(`命令已发送: ${commandString}`, false);
+                        
+                        // 检查特征值支持的写入方式并选择合适的方法
+                        const char = txCharacteristic.value;
+                        
+                        if (char.properties.writeWithoutResponse) {
+                            // 优先使用无响应写入（更快，适合连续发送）
+                            await char.writeValueWithoutResponse(commandBytes);
+                            showLog(`命令已发送(无响应): ${commandString}`, false);
+                        } else if (char.properties.write) {
+                            // 使用需要响应的写入
+                            await char.writeValueWithResponse(commandBytes);
+                            showLog(`命令已发送(有响应): ${commandString}`, false);
+                        } else {
+                            throw new Error('特征值不支持写入操作');
+                        }
+                        
                         initializeLucideIcons();
                     } catch (error) {
                         console.error('发送命令失败:', error);
-                        showLog(`发送失败: ${error.message}`, true);
                         
-                        // 检查是否是连接问题
-                        if (error.name === 'NetworkError' || error.message.includes('GATT')) {
+                        // 更详细的错误处理
+                        if (error.name === 'NotSupportedError') {
+                            showLog(`不支持的操作: 特征值可能不支持此写入方式`, true);
+                            // 可以尝试切换写入方式
+                            if (txCharacteristic.value.properties.write && !txCharacteristic.value.properties.writeWithoutResponse) {
+                                showLog('尝试使用有响应写入...', false);
+                                try {
+                                    const commandBytes = hexToBytes(commandString);
+                                    await txCharacteristic.value.writeValueWithResponse(commandBytes);
+                                    showLog(`命令已发送(重试): ${commandString}`, false);
+                                    return;
+                                } catch (retryError) {
+                                    showLog(`重试失败: ${retryError.message}`, true);
+                                }
+                            }
                             onDisconnected();
+                        } else if (error.name === 'NetworkError' || error.message.includes('GATT')) {
+                            showLog(`网络错误: ${error.message}`, true);
+                            onDisconnected();
+                        } else if (error.name === 'InvalidStateError') {
+                            showLog('设备状态无效，尝试重新连接', true);
+                            onDisconnected();
+                        } else {
+                            showLog(`发送失败: ${error.message}`, true);
                         }
                     }
                 };
