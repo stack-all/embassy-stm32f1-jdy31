@@ -156,6 +156,38 @@
                 </div>
             </div>
 
+            <!-- Device Response Card -->
+            <div v-if="lastDeviceResponse" class="bg-gray-700/50 rounded-lg p-4 mb-6" data-card="response">
+                <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('response')">
+                    <i data-lucide="radio" class="lucide-icon mr-2 text-green-400"></i>
+                    设备响应
+                    <i :data-lucide="expandedCards.response ? 'chevron-up' : 'chevron-down'" class="lucide-icon ml-auto text-gray-400"></i>
+                </h2>
+                <div v-show="expandedCards.response" class="space-y-3">
+                    <div class="bg-green-800/30 border border-green-600 rounded-lg p-3">
+                        <div class="text-sm">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-medium text-green-300">最后响应:</span>
+                                <span class="text-xs text-gray-400">{{ lastDeviceResponse.timestamp }}</span>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <code class="bg-gray-900 text-green-300 px-2 py-1 rounded text-xs font-mono">
+                                    {{ lastDeviceResponse.hex }}
+                                </code>
+                                <button @click="copyToClipboard(lastDeviceResponse.hex)" 
+                                        class="ml-2 p-1 hover:bg-green-600/30 rounded transition-colors" 
+                                        title="复制响应数据">
+                                    <i data-lucide="copy" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                            <div class="text-xs text-green-300 mt-1">
+                                对应命令: {{ lastDeviceResponse.command }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- HEX Bruteforce Card -->
             <div class="bg-gray-700/50 rounded-lg p-4 mb-6" data-card="bruteforce">
                 <h2 class="text-lg font-semibold mb-3 flex items-center cursor-pointer" @click="toggleCard('bruteforce')">
@@ -310,6 +342,10 @@
                 const showInstallPrompt = ref(false);
                 const deferredPrompt = ref(null);
 
+                // Response state
+                const lastDeviceResponse = ref(null);
+                const lastSentCommand = ref('');
+
                 // Bruteforce state
                 const bruteforcePattern = ref('AA 01 9A XX 02 XX XX 55');
                 const bruteforceDelay = ref(1000);
@@ -331,6 +367,7 @@
                     connection: true,    // 设备连接默认展开
                     washingModes: true,  // 洗衣模式默认展开
                     bruteforce: false,  // HEX爆破工具默认折叠
+                    response: false,     // 设备响应默认折叠
                     manual: false       // 手动命令默认折叠
                 });
 
@@ -412,6 +449,40 @@
                         return `约${seconds}秒`;
                     }
                 });
+
+                // --- Response Handling Functions ---
+                const handleDeviceResponse = (hexString, bytes) => {
+                    // 分析响应数据，可以根据具体协议进行解析
+                    console.log('设备响应 - HEX:', hexString);
+                    console.log('设备响应 - Bytes:', bytes);
+                    
+                    // 示例：检查是否为成功响应
+                    if (hexString.includes('AA') && hexString.includes('55')) {
+                        // 看起来像是有效的响应格式
+                        lastDeviceResponse.value = {
+                            hex: hexString,
+                            timestamp: new Date().toLocaleTimeString(),
+                            command: currentBruteforceCommand.value || lastSentCommand.value || '手动命令'
+                        };
+                        
+                        // 如果正在爆破，可能需要特殊处理
+                        if (isBruteforcing.value) {
+                            // 检查是否为成功响应（根据你的协议定义）
+                            if (isSuccessResponse(hexString)) {
+                                showLog(`爆破成功！命令: ${currentBruteforceCommand.value}, 响应: ${hexString}`, false, 10000);
+                                // 可以选择停止爆破或继续
+                                // stopBruteforce();
+                            }
+                        }
+                    }
+                };
+
+                // 添加判断成功响应的函数（需要根据你的设备协议调整）
+                const isSuccessResponse = (hexString) => {
+                    // 示例：根据你的设备协议定义成功响应的特征
+                    // 这里需要根据实际设备的响应格式来调整
+                    return hexString.includes('AA') && hexString.includes('55');
+                };
 
                 // --- Initialize Lucide Icons ---
                 const initializeLucideIcons = () => {
@@ -589,34 +660,67 @@
                         const service = await server.getPrimaryService(primaryServiceUUID);
                         showLog('服务已找到，正在查找特征...', false);
 
-                        // 新模块默认特征UUID是0xffe2
+                        // 设置写入特征 (0xFFE2)
                         const txCharacteristicUUID = 0xffe2;
                         
                         try {
                             txCharacteristic.value = await service.getCharacteristic(txCharacteristicUUID);
-                            showLog('特征已找到，连接成功！', false);
-                            isConnected.value = true;
+                            showLog('写入特征已找到', false);
                         } catch (charError) {
-                            // 如果默认特征值不工作，尝试获取所有特征值
-                            showLog('默认特征不可用，尝试获取所有可用特征值...', false);
+                            // 如果默认写入特征不工作，尝试获取所有特征值
+                            showLog('默认写入特征不可用，尝试获取所有可用特征值...', false);
                             const characteristics = await service.getCharacteristics();
                             
                             if (characteristics.length > 0) {
-                                // 使用第一个可写入的特征值
                                 for (let char of characteristics) {
                                     console.log(`发现特征: ${char.uuid}, 属性:`, char.properties);
                                     if (char.properties.write || char.properties.writeWithoutResponse) {
                                         txCharacteristic.value = char;
-                                        showLog(`使用特征值: ${char.uuid}`, false);
-                                        isConnected.value = true;
-                                        return;
+                                        showLog(`使用写入特征值: ${char.uuid}`, false);
+                                        break;
                                     }
                                 }
-                                throw new Error('未找到可写入的特征值');
+                                if (!txCharacteristic.value) {
+                                    throw new Error('未找到可写入的特征值');
+                                }
                             } else {
                                 throw new Error('未找到任何特征值');
                             }
                         }
+
+                        // 设置接收特征 (0xFFE1) - 用于接收设备响应
+                        try {
+                            const rxCharacteristicUUID = 0xffe1;
+                            const rxCharacteristic = await service.getCharacteristic(rxCharacteristicUUID);
+                            
+                            if (rxCharacteristic.properties.notify) {
+                                // 启用通知
+                                await rxCharacteristic.startNotifications();
+                                
+                                // 监听数据接收
+                                rxCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+                                    const value = event.target.value;
+                                    const bytes = new Uint8Array(value.buffer);
+                                    const hexString = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                                    
+                                    // 显示接收到的数据
+                                    showLog(`接收到响应: ${hexString}`, false, 3000);
+                                    
+                                    // 处理设备响应
+                                    handleDeviceResponse(hexString, bytes);
+                                });
+                                
+                                showLog('接收特征已配置，可以接收设备响应', false);
+                            } else {
+                                showLog('设备不支持通知功能，无法接收响应', false);
+                            }
+                        } catch (rxError) {
+                            console.warn('接收特征配置失败:', rxError);
+                            showLog('接收特征配置失败，但写入功能仍可用', false);
+                        }
+
+                        isConnected.value = true;
+                        showLog('连接成功！可以发送命令并接收响应', false);
 
                     } catch (error) {
                         if (error.name !== 'NotFoundError') {
@@ -672,6 +776,9 @@
 
                     try {
                         const commandBytes = hexToBytes(commandString);
+                        
+                        // 记录发送的命令
+                        lastSentCommand.value = commandString;
                         
                         // 检查特征值支持的写入方式并选择合适的方法
                         const char = txCharacteristic.value;
@@ -1090,6 +1197,7 @@
                     bruteforceCheckpoint,
                     canResume,
                     expandedCards,
+                    lastDeviceResponse,
                     scanAndConnect,
                     disconnect,
                     sendCommand,
