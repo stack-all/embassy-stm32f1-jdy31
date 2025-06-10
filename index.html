@@ -229,7 +229,14 @@
                     <!-- Checkpoint Info -->
                     <div v-if="canResume" class="bg-blue-800/30 border border-blue-600 rounded-lg p-3 mb-3">
                         <div class="text-sm">
-                            <strong>检查点:</strong> 已完成 {{ bruteforceCheckpoint.current }}/{{ bruteforceCheckpoint.total }} 个组合
+                            <div class="flex items-center justify-between">
+                                <span><strong>检查点:</strong> 已完成 {{ bruteforceCheckpoint.current }}/{{ bruteforceCheckpoint.total }} 个组合</span>
+                                <button @click="copyToClipboard(`检查点信息: 已完成 ${bruteforceCheckpoint.current}/${bruteforceCheckpoint.total} 个组合，模式: ${bruteforceCheckpoint.pattern}`)" 
+                                        class="ml-2 p-1 hover:bg-blue-600/30 rounded transition-colors" 
+                                        title="复制检查点信息">
+                                    <i data-lucide="copy" class="w-3 h-3"></i>
+                                </button>
+                            </div>
                             <div class="text-xs text-blue-300 mt-1">
                                 剩余 {{ bruteforceCheckpoint.total - bruteforceCheckpoint.current }} 个组合
                             </div>
@@ -246,7 +253,14 @@
                             <div class="bg-cyan-500 h-2 rounded-full transition-all duration-300" :style="{ width: bruteforceProgressPercent + '%' }"></div>
                         </div>
                         <div class="text-xs text-gray-400">
-                            <div v-if="isBruteforcing">当前命令: {{ currentBruteforceCommand }}</div>
+                            <div v-if="isBruteforcing" class="flex items-center justify-between">
+                                <span>当前命令: {{ currentBruteforceCommand }}</span>
+                                <button v-if="currentBruteforceCommand" @click="copyToClipboard(currentBruteforceCommand)" 
+                                        class="ml-2 p-1 hover:bg-gray-600 rounded transition-colors" 
+                                        title="复制当前命令">
+                                    <i data-lucide="copy" class="w-3 h-3"></i>
+                                </button>
+                            </div>
                             <div v-if="isBruteforcing">预计剩余时间: {{ estimatedTimeRemaining }}</div>
                         </div>
                     </div>
@@ -486,6 +500,32 @@
                 const hexToBytes = (hex) => {
                     const bytes = hex.trim().split(/\s+/).map(h => parseInt(h, 16));
                     return new Uint8Array(bytes);
+                };
+
+                // --- Copy to Clipboard Function ---
+                const copyToClipboard = async (text) => {
+                    try {
+                        if (navigator.clipboard && window.isSecureContext) {
+                            await navigator.clipboard.writeText(text);
+                            showLog('已复制到剪贴板', false, 2000);
+                        } else {
+                            // 降级方案
+                            const textArea = document.createElement('textarea');
+                            textArea.value = text;
+                            textArea.style.position = 'fixed';
+                            textArea.style.left = '-999999px';
+                            textArea.style.top = '-999999px';
+                            document.body.appendChild(textArea);
+                            textArea.focus();
+                            textArea.select();
+                            document.execCommand('copy');
+                            textArea.remove();
+                            showLog('已复制到剪贴板', false, 2000);
+                        }
+                    } catch (error) {
+                        console.error('复制失败:', error);
+                        showLog('复制失败', true, 2000);
+                    }
                 };
 
                 // --- Card Toggle Functions ---
@@ -951,11 +991,21 @@
                     }
                     
                     const wasRunning = isBruteforcing.value;
-                    isBruteforcing.value = false;
                     
                     if (wasRunning) {
-                        showLog('HEX爆破已停止', false, 2000);
+                        const remaining = bruteforceProgress.value.total - bruteforceProgress.value.current;
+                        const lastCommand = currentBruteforceCommand.value;
+                        
+                        // 构建停止信息
+                        let stopMessage = `HEX爆破已停止，剩余 ${remaining} 个组合`;
+                        if (lastCommand) {
+                            stopMessage += `，停止前最后发送的命令是：${lastCommand}`;
+                        }
+                        
+                        showLog(stopMessage, false, 6000); // 延长显示时间
                     }
+                    
+                    isBruteforcing.value = false;
                 };
 
                 return {
@@ -995,7 +1045,8 @@
                     clearCheckpoint,
                     toggleCard,
                     installPWA,
-                    dismissInstallPrompt
+                    dismissInstallPrompt,
+                    copyToClipboard
                 };
             }
         });
